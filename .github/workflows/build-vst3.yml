@@ -1,0 +1,48 @@
+
+name: Build Screw Originator G.O.D VST3
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'Screw_Originator_GOD_Windows7_Source.zip'
+      - '.github/workflows/build-vst3.yml'
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract source ZIP
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem -Path . -Filter 'Screw_Originator_GOD_Windows7_Source.zip' | Select-Object -First 1
+          if (-not $zip) { throw 'Source ZIP not found in repository root.' }
+          Expand-Archive -Path $zip.FullName -DestinationPath "$env:RUNNER_TEMP\src" -Force
+          $src = Get-ChildItem "$env:RUNNER_TEMP\src" -Directory | Select-Object -First 1
+          "SOURCE_DIR=$($src.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Configure project
+        shell: pwsh
+        run: cmake -S "$env:SOURCE_DIR" -B "$env:RUNNER_TEMP\build" -A x64 -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build VST3
+        shell: pwsh
+        run: cmake --build "$env:RUNNER_TEMP\build" --config Release
+
+      - name: Package VST3
+        shell: pwsh
+        run: |
+          $found = Get-ChildItem -Path "$env:RUNNER_TEMP\build" -Directory -Recurse -Filter '*.vst3' | Select-Object -First 1
+          if (-not $found) { throw 'No VST3 bundle generated. Check build logs.' }
+          New-Item -ItemType Directory -Force -Path "$env:GITHUB_WORKSPACE\dist" | Out-Null
+          Compress-Archive -Path $found.FullName -DestinationPath "$env:GITHUB_WORKSPACE\dist\Screw_Originator_GOD_VST3.zip" -Force
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: Screw-Originator-GOD-VST3-Windows-x64
+          path: dist/Screw_Originator_GOD_VST3.zip
+          if-no-files-found: error
